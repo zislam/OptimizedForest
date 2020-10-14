@@ -34,7 +34,7 @@ Seed for random number generator. (default 1)
 `-I <num>`
 Number of iterations for genetic algorithm. (default 20)
 
-`-P &lt;num&gt;`
+`-P <num>`
 Initial population size for genetic algorithm. (default 20)
 
 `-C < RandomForest | Bagging >`
