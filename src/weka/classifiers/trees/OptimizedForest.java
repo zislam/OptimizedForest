@@ -85,7 +85,7 @@ import weka.core.converters.ConverterUtils;
  * <!-- options-end -->
  *
  * @author Michael Furner
- * @version $Revision: 1.0$
+ * @version $Revision: 1.0.1$
  */
 public class OptimizedForest extends AbstractClassifier {
     
@@ -228,15 +228,15 @@ public class OptimizedForest extends AbstractClassifier {
             for(int k = 0; k < m_sizeOfPopulation/2; k++) {
                 
                 Chromosome chrB = tempCurr.getBest();
+                tempCurr.remove(tempCurr.getBestIndex());
+                
                 Chromosome chrR = tempCurr.getRoulette();
+                tempCurr.remove(tempCurr.getLastRouletteIndex());
                 
                 Chromosome[] offspring = chrB.crossover(chrR);
                 pMod.addChromosome(offspring[0]);
                 pMod.addChromosome(offspring[1]);
-                
-                tempCurr.remove(tempCurr.getBestIndex());
-                tempCurr.remove(tempCurr.getLastRouletteIndex());
-                //as I go from having an even number to an odd number
+                                
                 
             }
             
@@ -741,14 +741,18 @@ public class OptimizedForest extends AbstractClassifier {
         }
         
         public String toString() {
-            //TODO implement
+            //TODO make it so that outputting the final subforest size is an option
             String output = "";
+            int sum = 0;
             for(int i = 0; i < chromosomeEncoding.length; i++) {
                 if(chromosomeEncoding[i] == 1) { //this classifier is active
                     output += metricForEachTree[i].toString();
                     output += "\n";
+                    sum++;
                 }
             }
+            output += "\nFinal subforest size: " + sum;
+            
             return output;
         }
         
@@ -934,7 +938,7 @@ public class OptimizedForest extends AbstractClassifier {
        private static final long serialVersionUID = 5432423423L;
         
         BaggingHolder(Instances instances) throws Exception {
-            this.buildClassifier(m_data);
+            this.buildClassifier(instances);
         }
         
         @Override
@@ -990,27 +994,33 @@ public class OptimizedForest extends AbstractClassifier {
         
         public void addChromosome(Chromosome c) throws Exception {
             
-            double accuracy = 0;
-            //work out the chromosome's accuracy
-            for(int i = 0; i < m_data.size(); i++) {
-                double pred = c.predictMajorityVoting(m_data.get(i));
-                double actual = m_data.get(i).classValue();
-                if(pred == actual) {
-                    accuracy++;
-                }
-            }
-            accuracy /= m_data.size();
-            this.chromosomeAccuracies.add(accuracy);
-            c.accuracyOverDataset = accuracy;
-            this.chromosomes.add(c);
-            accuracySum += accuracy;
+            if(Double.isNaN(c.accuracyOverDataset)) {
             
-            if(accuracy > bestAccuracy) {
-                bestAccuracy = accuracy;
+                double accuracy = 0;
+                //work out the chromosome's accuracy
+                for(int i = 0; i < m_data.size(); i++) {
+                    double pred = c.predictMajorityVoting(m_data.get(i));
+                    double actual = m_data.get(i).classValue();
+                    if(pred == actual) {
+                        accuracy++;
+                    }
+                }
+                accuracy /= m_data.size();
+                c.accuracyOverDataset = accuracy;
+                
+            }
+            
+            this.chromosomeAccuracies.add(c.accuracyOverDataset);
+                
+            this.chromosomes.add(c);
+            accuracySum += c.accuracyOverDataset;
+            
+            if(c.accuracyOverDataset > bestAccuracy) {
+                bestAccuracy = c.accuracyOverDataset;
                 bestAccuracyIndex = this.chromosomeAccuracies.size()-1; //the most recent addition
             }
-            if(accuracy < worstAccuracy) {
-                worstAccuracy = accuracy;
+            if(c.accuracyOverDataset < worstAccuracy) {
+                worstAccuracy = c.accuracyOverDataset;
                 worstAccuracyIndex = this.chromosomeAccuracies.size()-1; //the most recent addition
             }
             
@@ -1107,23 +1117,33 @@ public class OptimizedForest extends AbstractClassifier {
         
         public Chromosome getRoulette() {
             
-            lastRouletteIndex = bestAccuracyIndex;
+            lastRouletteIndex = -1;
             
-            //this is just to ensure we don't get ChrB from this roll
-            while(lastRouletteIndex == bestAccuracyIndex) {
-                double roll = m_random.nextDouble() * accuracySum;
-                double sum = 0;
-                int counter = -1;
-
-                while(sum < roll) {
-
-                    counter++;
-                    sum += chromosomeAccuracies.get(counter);
-
+            if(chromosomeAccuracies.size() == 1) {
+                lastRouletteIndex = 0;
+            } 
+            else {
+                //normalise fitnesses
+                double previousProbability = 0;
+                double[] probabilities = new double[chromosomeAccuracies.size()];
+                for(int i = 0; i < chromosomeAccuracies.size(); i++) {
+                    probabilities[i] = previousProbability + (chromosomeAccuracies.get(i) / accuracySum);
+                    previousProbability = probabilities[i];
                 }
 
-                lastRouletteIndex = counter;
-                
+                while(lastRouletteIndex == -1) {
+                    double roll = m_random.nextDouble();
+                    for(int i = 0; i < probabilities.length; i++ ) {
+                        double next = 1.0;
+                        if(i != probabilities.length-1){
+                            next = probabilities[i+1];
+                        }
+
+                        if(roll >= probabilities[i] && roll < next) {
+                            lastRouletteIndex = i;
+                        }
+                    }
+                }
             }
             
             return this.chromosomes.get(lastRouletteIndex);
@@ -1169,20 +1189,33 @@ public class OptimizedForest extends AbstractClassifier {
         public ChromosomeCollection getRoulettePop() throws Exception {
             
             ChromosomeCollection newPoppedPopn = new ChromosomeCollection(this.baseChromosome);
-                        
+               
+            //normalise fitnesses
+            double previousProbability = 0;
+            double[] probabilities = new double[chromosomeAccuracies.size()];
+            for(int i = 0; i < chromosomeAccuracies.size(); i++) {
+                probabilities[i] = previousProbability + (chromosomeAccuracies.get(i) / accuracySum);
+                previousProbability = probabilities[i];
+            }
+            
+            boolean[] selectedAlready = new boolean[chromosomeAccuracies.size()];
+            
             while(newPoppedPopn.chromosomes.size() < m_sizeOfPopulation) {
-                double roll = m_random.nextDouble() * accuracySum;
-                double sum = 0;
-                int counter = -1;
 
-                while(sum < roll) {
+                double roll = m_random.nextDouble();
+                for(int i = 0; i < probabilities.length; i++ ) {
+                    double next = 1.0;
+                    if(i != probabilities.length-1){
+                        next = probabilities[i+1];
+                    }
 
-                    counter++;
-                    sum += chromosomeAccuracies.get(counter);
-
+                    if(roll >= probabilities[i] && roll < next) {
+                        if(!selectedAlready[i]) {
+                            newPoppedPopn.addChromosome(this.chromosomes.get(i));
+                            selectedAlready[i] = true;
+                        }
+                    }
                 }
-
-                newPoppedPopn.addChromosome(this.chromosomes.get(counter));
                 
             }
             
@@ -1221,7 +1254,7 @@ public class OptimizedForest extends AbstractClassifier {
                 }
                 
             }
-            treeAccuracy = numberCorrect / m_data.size();
+            treeAccuracy = (double)numberCorrect / (double)m_data.size();
                         
         }
         
