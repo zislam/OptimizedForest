@@ -742,6 +742,7 @@ public class OptimizedForest extends AbstractClassifier {
         
         public String toString() {
             //TODO make it so that outputting the final subforest size is an option
+            //TODO make RandomForest and Bagging options available to be modified
             String output = "";
             int sum = 0;
             for(int i = 0; i < chromosomeEncoding.length; i++) {
