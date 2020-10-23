@@ -76,18 +76,13 @@ import weka.core.converters.ConverterUtils;
  *  (default 20)
  * </pre>
  * 
- * <pre>
- * -C &lt; RandomForest | Bagging &gt;
- *  Decision forest building method.
- *  (Default = RandomForest)
- * </pre>
  *
  * <!-- options-end -->
  *
  * @author Michael Furner
  * @version $Revision: 1.0.1$
  */
-public class OptimizedForest extends AbstractClassifier {
+public class OptimizedForest extends SingleClassifierEnhancer {
     
     /**
      * For serialization.
@@ -115,21 +110,7 @@ public class OptimizedForest extends AbstractClassifier {
         BS_BUILT, BS_UNBUILT, BS_NOTCOMPATIBLE, BS_ONEATTRIBUTE, BS_POPTOOSMALL,
         BS_ITERATIONSTOOSMALL
     };
-    
-     /** Classification type: RandomForest */
-    public static final int CT_RANDOMFOREST = 1;
-    /** Classification type: Bagging */
-    public static final int CT_BAGGING = 2;
-    
-    /** Tags for displaying classification types in the GUI. */
-    public static final Tag[] TAGS_CT = {
-        new Tag(CT_RANDOMFOREST, "RandomForest."),
-        new Tag(CT_BAGGING, "Bagging."),
-    };
-    
-    /** Type of decision forest to use to build the trees. */
-    private int classificationType = CT_RANDOMFOREST;
-    
+        
     /** The build status of this OptimizedForest object */
     private BuildStatus buildStatus = BuildStatus.BS_UNBUILT;
     
@@ -166,6 +147,7 @@ public class OptimizedForest extends AbstractClassifier {
      */
     public OptimizedForest() {
         m_random = new Random(m_randomSeed);
+        m_Classifier = new weka.classifiers.trees.RandomForest();
     }
     
     /**
@@ -179,10 +161,18 @@ public class OptimizedForest extends AbstractClassifier {
     public void buildClassifier(Instances instances) throws Exception {
         
         getCapabilities().testWithFail(instances);
-        
+
         
         if(m_random == null) {
             m_random = new Random(m_randomSeed);
+        }
+        
+        String classifierName = m_Classifier.getClass().getName();
+        
+        //ensure the classifier is a supported decision forest
+        if(!"weka.classifiers.meta.Bagging".equals(classifierName) &&
+           !"weka.classifiers.trees.RandomForest".equals(classifierName)) {
+            buildStatus = BuildStatus.BS_NOTCOMPATIBLE;
         }
         
         if(instances.numAttributes() == 1) { //dataset with only one attribute
@@ -202,11 +192,11 @@ public class OptimizedForest extends AbstractClassifier {
         }
         
         /* Step 0: Setup and Build Decision Forest */
-        if(classificationType == CT_RANDOMFOREST) {
-            classifierHolder = new RandomForestHolder(instances);
+        if(classifierName.equals("weka.classifiers.trees.RandomForest")) {
+            classifierHolder = new RandomForestHolder(m_Classifier, instances);
         }
-        else {
-            classifierHolder = new BaggingHolder(instances);
+        else if(classifierName.equals("weka.classifiers.meta.Bagging")) {
+            classifierHolder = new BaggingHolder(m_Classifier, instances);
         }
        
         m_data = instances;
@@ -932,7 +922,9 @@ public class OptimizedForest extends AbstractClassifier {
         */
        private static final long serialVersionUID = 2432423423L;
         
-        RandomForestHolder(Instances instances) throws Exception {
+        RandomForestHolder(Classifier classifier, Instances instances) throws Exception {
+            String[] options = ((RandomForest)classifier).getOptions();
+            this.setOptions(options);
             this.buildClassifier(instances);
         }
 
@@ -951,7 +943,9 @@ public class OptimizedForest extends AbstractClassifier {
         */
        private static final long serialVersionUID = 5432423423L;
         
-        BaggingHolder(Instances instances) throws Exception {
+        BaggingHolder(Classifier classifier, Instances instances) throws Exception {
+            String[] options = ((Bagging)classifier).getOptions();
+            this.setOptions(options);
             this.buildClassifier(instances);
         }
         
@@ -1372,32 +1366,6 @@ public class OptimizedForest extends AbstractClassifier {
     }
     
     /**
-     * Set sort method for displaying rules
-     * @param newClassificationType
-     */
-    public void setClassificationType(SelectedTag newClassificationType) {
-        if(newClassificationType.getTags() == TAGS_CT) {
-            classificationType = newClassificationType.getSelectedTag().getID();
-        }
-    }
-    
-    /**
-     * Return decision forest type
-     * @return decision forest type
-     */
-    public SelectedTag getClassificationType() {
-        return new SelectedTag(classificationType, TAGS_CT);
-    }
-    
-    /**
-     * Return tip text for this option
-     * @return tip text for this option
-     */
-    public String classificationTypeTipText() {
-        return "Type of decision forest to use.";
-    }
-    
-    /**
      * Parse the options for OptimizedForest.
      * 
      * <!-- options-start --> Valid options are:
@@ -1421,11 +1389,6 @@ public class OptimizedForest extends AbstractClassifier {
      *  (default 20)
      * </pre>
      * 
-     * <pre>
-     * -C &lt; RandomForest | Bagging &gt;
-     *  Decision forest building method.
-     *  (Default = RandomForest)
-     * </pre>
      *
      * <!-- options-end -->
      * 
@@ -1458,20 +1421,6 @@ public class OptimizedForest extends AbstractClassifier {
             setSizeOfPopulation(20);
         }
         
-        String sCT = Utils.getOption('C', options);
-        if(sCT.length() != 0) {
-            if(sCT.equals("RandomForest")) {
-                setClassificationType(new SelectedTag(CT_RANDOMFOREST, TAGS_CT));
-            }
-            else if(sCT.equals("Bagging")) {
-                setClassificationType(new SelectedTag(CT_BAGGING, TAGS_CT));
-            }
-            else {
-                throw new IllegalArgumentException("Invalid classification method.");
-            }
-        }
-       
-        
         super.setOptions(options);
     }
     
@@ -1492,17 +1441,6 @@ public class OptimizedForest extends AbstractClassifier {
         
         result.add("-P");
         result.add("" + getSizeOfPopulation());
-        
-        result.add("-C");
-        switch(classificationType) {
-            case CT_RANDOMFOREST:
-                result.add("RandomForest");
-                break;
-            case CT_BAGGING:
-                result.add("Bagging");
-                break;
-        }
-        
 
         Collections.addAll(result, super.getOptions());
 
