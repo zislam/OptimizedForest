@@ -112,7 +112,8 @@ public class OptimizedForest extends AbstractClassifier {
     
     /** Enum for holding different build statuses */
     enum BuildStatus {
-        BS_BUILT, BS_UNBUILT, BS_NOTCOMPATIBLE, BS_ONEATTRIBUTE
+        BS_BUILT, BS_UNBUILT, BS_NOTCOMPATIBLE, BS_ONEATTRIBUTE, BS_POPTOOSMALL,
+        BS_ITERATIONSTOOSMALL
     };
     
      /** Classification type: RandomForest */
@@ -186,6 +187,12 @@ public class OptimizedForest extends AbstractClassifier {
         
         if(instances.numAttributes() == 1) { //dataset with only one attribute
             buildStatus = BuildStatus.BS_ONEATTRIBUTE;
+        }
+        if(m_sizeOfPopulation < 2) {
+            buildStatus = BuildStatus.BS_POPTOOSMALL;
+        }
+        if(m_numberIterations < 1) {
+            buildStatus = BuildStatus.BS_ITERATIONSTOOSMALL;
         }
         
         if(buildStatus != BuildStatus.BS_UNBUILT) {     
@@ -360,6 +367,12 @@ public class OptimizedForest extends AbstractClassifier {
             }
             else if(buildStatus == BuildStatus.BS_ONEATTRIBUTE) {
                 outString = "OptimizedForest not built!\nUse a dataset with more than one attribute.";
+            }
+            else if(buildStatus == BuildStatus.BS_POPTOOSMALL) {
+                outString = "OptimizedForest not built!\nInitial population for GA must be >= 2.";
+            }
+            else if(buildStatus == BuildStatus.BS_ITERATIONSTOOSMALL) {
+                outString = "OptimizedForest not built!\nYou need to do at least one iteration (preferably more) for GA to do anything!";
             }
         }
         return outString;
@@ -1454,7 +1467,7 @@ public class OptimizedForest extends AbstractClassifier {
                 setClassificationType(new SelectedTag(CT_BAGGING, TAGS_CT));
             }
             else {
-                throw new IllegalArgumentException("Invalid sort method.");
+                throw new IllegalArgumentException("Invalid classification method.");
             }
         }
        
